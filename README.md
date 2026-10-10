@@ -2,6 +2,8 @@
 
 A single-page web app for designing QR codes with logos and drawings, **without guessing whether they still scan**.
 
+**Use it here: https://mmmlinux.github.io/QR-Doodle/** · Source: https://github.com/mmmlinux/QR-Doodle
+
 Paint modules dark or light, drop in a logo, and QR Doodle shows exactly how much of the
 Reed-Solomon error-correction budget you've used, **per block**, the way a real decoder sees it.
 

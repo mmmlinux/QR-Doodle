@@ -28,7 +28,9 @@ button, .btn { padding: 6px 10px; cursor: pointer; display: inline-flex; align-i
 button:hover, .btn:hover { border-color: #3d4452; background: #252a35; }
 button:disabled { opacity: .45; cursor: default; }
 button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.ghost { background: transparent; }
+button.ghost, .btn.ghost { background: transparent; }
+a.btn { text-decoration: none; }
+dialog a { color: var(--accent-2); }
 .wide { flex: 1; width: 100%; }
 select { padding: 5px 6px; min-width: 0; }
 textarea { width: 100%; padding: 8px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
