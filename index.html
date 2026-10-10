@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Doodle — draw on QR codes</title>
+  <meta name="description" content="Design QR codes with logos: paint modules, see the real Reed-Solomon error budget per block, and export.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 7 7%22%3E%3Cpath fill=%22%237c5cff%22 d=%22M0 0h7v7H0z%22/%3E%3Cpath fill=%22%23fff%22 d=%22M1 1h5v5H1z%22/%3E%3Cpath fill=%22%237c5cff%22 d=%22M2 2h3v3H2z%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo-mark" aria-hidden="true"></span>
+      <div>
+        <h1>QR Doodle <span class="app-version" data-app-version></span></h1>
+        <p>Draw on QR codes without breaking them</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="undoBtn" title="Undo (Ctrl/⌘+Z)">↶ Undo</button>
+      <button id="redoBtn" title="Redo (Ctrl/⌘+Shift+Z)">↷ Redo</button>
+      <button id="clearBtn" title="Remove all painted modules">Clear drawing</button>
+      <span class="sep"></span>
+      <button id="saveBtn" title="Download the design as JSON">Save design</button>
+      <label class="btn" title="Load a design JSON">Load design<input type="file" id="loadInput" accept=".json,application/json" hidden></label>
+      <button id="helpBtn" class="ghost" title="How it works">? Help</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: content, code & logo -->
+    <aside class="panel">
+      <section>
+        <h2>Content</h2>
+        <textarea id="text" rows="3" spellcheck="false" placeholder="https://example.com"></textarea>
+        <div class="row">
+          <label for="mode">Encoding</label>
+          <select id="mode">
+            <option value="auto">Auto</option>
+            <option value="byte">Byte (UTF-8)</option>
+            <option value="alphanumeric">Alphanumeric</option>
+            <option value="numeric">Numeric</option>
+          </select>
+        </div>
+        <div id="contentInfo" class="hint"></div>
+      </section>
+
+      <section>
+        <h2>Code</h2>
+        <div class="row">
+          <label for="ecl">Error correction</label>
+          <select id="ecl">
+            <option value="L">L — ~7%</option>
+            <option value="M">M — ~15%</option>
+            <option value="Q">Q — ~25%</option>
+            <option value="H">H — ~30%</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="version">Version (density)</label>
+          <select id="version"></select>
+        </div>
+        <div class="row">
+          <label for="maskMode">Mask</label>
+          <select id="maskMode">
+            <option value="design">Best for my drawing</option>
+            <option value="penalty">Standard (spec penalty)</option>
+            <option value="0">Mask 0</option><option value="1">Mask 1</option>
+            <option value="2">Mask 2</option><option value="3">Mask 3</option>
+            <option value="4">Mask 4</option><option value="5">Mask 5</option>
+            <option value="6">Mask 6</option><option value="7">Mask 7</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="useSpare"> Use spare capacity to match drawing
+          <span class="info" title="Padding codewords after your message are ignored by scanners. QR Doodle re-solves them (a linear solve over GF(2), like QArt codes) so that as many painted codewords as possible become 'naturally' correct and cost nothing. Pick a larger version to get more spare capacity.">ⓘ</span></label>
+        <label class="check"><input type="checkbox" id="lockFunc"> Lock required modules
+          <span class="info" title="Finder, timing, alignment, format and version patterns. Scanners need these to locate and read the code. Unlock only if you know what you're doing.">ⓘ</span></label>
+        <div class="row">
+          <label for="margin">Safety margin <span class="info" title="Printing, camera blur and lighting add their own errors. Designs that use more than this share of the correction budget are flagged as risky.">ⓘ</span></label>
+          <div class="slider"><input type="range" id="margin" min="30" max="100" step="5"><output id="marginOut"></output></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Masks</h2>
+        <p class="hint">Each mask changes which modules are naturally dark, so some fit your drawing better. Click one to use it.</p>
+        <div id="masks" class="masks"></div>
+      </section>
+
+      <section>
+        <h2>Logo</h2>
+        <div class="row">
+          <label class="btn wide">Choose image…<input type="file" id="logoInput" accept="image/*" hidden></label>
+          <button id="logoRemove" class="ghost" title="Remove logo">✕</button>
+        </div>
+        <div id="logoControls" class="logo-controls">
+          <div class="row">
+            <label for="logoMode">Effect on modules</label>
+            <select id="logoMode">
+              <option value="trace">Trace — modules follow the image</option>
+              <option value="knockout">Knockout — clear an area for it</option>
+              <option value="reference">Reference only</option>
+            </select>
+          </div>
+          <div class="row"><label for="logoSize">Size</label><div class="slider"><input type="range" id="logoSize" min="5" max="100" step="1"><output id="logoSizeOut"></output></div></div>
+          <div class="row"><label for="logoX">X</label><div class="slider"><input type="range" id="logoX" min="0" max="100" step="0.5"><output id="logoXOut"></output></div></div>
+          <div class="row"><label for="logoY">Y</label><div class="slider"><input type="range" id="logoY" min="0" max="100" step="0.5"><output id="logoYOut"></output></div></div>
+          <div class="sub trace-only">
+            <div class="row"><label for="logoThreshold">Dark threshold</label><div class="slider"><input type="range" id="logoThreshold" min="1" max="254" step="1"><output id="logoThresholdOut"></output></div></div>
+            <label class="check"><input type="checkbox" id="logoInvert"> Invert image</label>
+            <label class="check"><input type="checkbox" id="logoTraceLight"> Force light where image is light
+              <span class="info" title="Off: only the dark parts of the logo force modules dark; light parts stay as normal QR data.">ⓘ</span></label>
+          </div>
+          <div class="sub knockout-only">
+            <div class="row"><label for="logoShape">Shape</label>
+              <select id="logoShape"><option value="rect">Rectangle</option><option value="ellipse">Ellipse</option></select></div>
+            <div class="row"><label for="logoPad">Padding (modules)</label><div class="slider"><input type="range" id="logoPad" min="0" max="6" step="0.5"><output id="logoPadOut"></output></div></div>
+            <div class="row"><label for="logoFill">Fill</label>
+              <select id="logoFill"><option value="0">Light</option><option value="1">Dark</option></select></div>
+          </div>
+          <div class="row"><label for="logoOpacity">Editor overlay</label><div class="slider"><input type="range" id="logoOpacity" min="0" max="100" step="5"><output id="logoOpacityOut"></output></div></div>
+          <label class="check"><input type="checkbox" id="logoInExport"> Draw logo image on final code</label>
+          <p class="hint">Use the <b>Move logo</b> tool to drag it on the grid (scroll wheel resizes). Logo position is relative, so it follows you across versions.</p>
+        </div>
+        <p id="logoEmpty" class="hint">No logo loaded. You can still paint by hand.</p>
+      </section>
+
+      <section>
+        <h2>Compare densities</h2>
+        <p class="hint">Tries your logo and drawing on several versions × error-correction levels (best mask each) and shows the worst block's share of the error budget.</p>
+        <button id="scanBtn" class="wide">Compare versions</button>
+        <div id="scanOut"></div>
+      </section>
+    </aside>
+
+    <!-- CENTER: editor -->
+    <div class="center">
+      <div class="toolbar">
+        <div class="group" role="group" aria-label="Tool">
+          <button data-tool="select" title="Select (S): drag to select, drag inside to move">⬚ Select</button>
+          <button data-tool="brush" title="Brush (B)">✎ Brush</button>
+          <button data-tool="rect" title="Rectangle (R)">▭ Rect</button>
+          <button data-tool="ellipse" title="Ellipse (O)">◯ Ellipse</button>
+          <button data-tool="logo" title="Move logo (M)">✥ Move logo</button>
+        </div>
+        <div class="group" role="group" aria-label="Edit">
+          <button id="copyBtn" title="Copy selection (Ctrl/⌘+C)">Copy</button>
+          <button id="cutBtn" title="Cut selection (Ctrl/⌘+X)">Cut</button>
+          <button id="pasteBtn" title="Paste (Ctrl/⌘+V), then click to place. R rotates, H/V flip.">Paste</button>
+          <button id="deleteSelBtn" title="Clear the selection (Delete)">Clear</button>
+        </div>
+        <div class="group" role="group" aria-label="Paint">
+          <button data-paint="1" class="paint-dark" title="Force dark (D)">■ Dark</button>
+          <button data-paint="0" class="paint-light" title="Force light (L)">□ Light</button>
+          <button data-paint="-1" title="Erase: back to normal QR data (E). Right-click also erases.">⌫ Erase</button>
+        </div>
+        <div class="group compact">
+          <label for="brush">Brush</label>
+          <input type="range" id="brush" min="1" max="9" step="1"><output id="brushOut"></output>
+          <select id="brushShape" title="Brush shape"><option value="square">■</option><option value="round">●</option></select>
+        </div>
+        <div class="group compact">
+          <label for="symmetry">Mirror</label>
+          <select id="symmetry">
+            <option value="none">Off</option><option value="h">Left ↔ right</option><option value="v">Top ↕ bottom</option><option value="both">Both</option><option value="rot">4-way rotate</option>
+          </select>
+        </div>
+        <div class="group compact">
+          <button id="zoomOut" title="Zoom out">−</button>
+          <button id="zoomFit" title="Fit to view">Fit</button>
+          <button id="zoomIn" title="Zoom in">+</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="editor"></canvas>
+        <div id="tooltip" class="tooltip" hidden></div>
+        <div id="errorBanner" class="error-banner" hidden></div>
+        <div id="modeHint" class="mode-hint" hidden></div>
+      </div>
+
+      <div class="viewbar">
+        <span class="focus-group" title="Hide the ordinary (unpainted) QR data so your drawing and logo stand out. Other overlays keep working. (F)">
+          <label class="check"><input type="checkbox" data-view="focus"><b>Design focus</b></label>
+          <select id="focusData" aria-label="Hidden data style"><option value="faint">Data faint</option><option value="hidden">Data hidden</option></select>
+        </span>
+        <label class="check legend required overlay"><input type="checkbox" data-view="required"><i></i>Required</label>
+        <label class="check legend forced overlay"><input type="checkbox" data-view="forced"><i></i>Painted</label>
+        <label class="check legend conflict overlay"><input type="checkbox" data-view="conflicts"><i></i>Costs budget</label>
+        <label class="check legend damaged overlay"><input type="checkbox" data-view="damaged"><i></i>Damaged codewords</label>
+        <label class="check legend free overlay"><input type="checkbox" data-view="free"><i></i>Free (remainder)</label>
+        <label class="check overlay"><input type="checkbox" data-view="blocks">Color by RS block</label>
+        <label class="check overlay"><input type="checkbox" data-view="codewords">Codeword outlines</label>
+        <label class="check"><input type="checkbox" data-view="grid">Grid</label>
+        <label class="check"><input type="checkbox" data-view="logo">Logo overlay</label>
+      </div>
+    </div>
+
+    <!-- RIGHT: status, masks, preview, export -->
+    <aside class="panel">
+      <section>
+        <h2>Error budget</h2>
+        <div id="statusBadge" class="badge">—</div>
+        <div id="statusText" class="status-text"></div>
+        <div class="meter" id="meter"><div class="meter-fill" id="meterFill"></div><div class="meter-margin" id="meterMargin"></div></div>
+        <div id="meterLabel" class="meter-label"></div>
+        <dl id="stats" class="stats"></dl>
+        <div id="issues"></div>
+        <h3>Per block <span class="info" title="Data is split into Reed-Solomon blocks. Each block can only fix a limited number of damaged codewords, so the code fails as soon as any one block runs out.">ⓘ</span></h3>
+        <div id="blocks" class="blocks"></div>
+      </section>
+
+      <section>
+        <h2>Preview &amp; export</h2>
+        <div class="preview-box"><canvas id="preview"></canvas></div>
+        <div id="scanResult" class="scan-result"></div>
+        <div class="row">
+          <button id="testScan" class="wide">Test with real decoders</button>
+        </div>
+        <label class="check"><input type="checkbox" id="autoScan"> Auto-test after each change</label>
+        <div class="row"><label for="styleShape">Modules</label>
+          <select id="styleShape"><option value="square">Square</option><option value="rounded">Rounded</option><option value="dots">Dots</option></select></div>
+        <div class="row"><label for="styleScale">Module size</label><div class="slider"><input type="range" id="styleScale" min="50" max="100" step="5"><output id="styleScaleOut"></output></div></div>
+        <div class="row"><label for="styleFinder">Finder eyes</label>
+          <select id="styleFinder"><option value="square">Square</option><option value="rounded">Rounded</option><option value="circle">Circle</option></select></div>
+        <div class="row"><label>Colours</label>
+          <div class="colors"><input type="color" id="styleFg" title="Dark colour"><input type="color" id="styleBg" title="Light colour"></div></div>
+        <div class="row"><label for="styleQuiet">Quiet zone</label><div class="slider"><input type="range" id="styleQuiet" min="0" max="8" step="1"><output id="styleQuietOut"></output></div></div>
+        <div class="row"><label for="exportPx">PNG size</label>
+          <select id="exportPx"><option>512</option><option>1024</option><option>2048</option><option>4096</option></select></div>
+        <div class="row two">
+          <button id="exportPng">Download PNG</button>
+          <button id="exportSvg">Download SVG</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="help">
+    <form method="dialog">
+      <h2>How QR Doodle works</h2>
+      <p>A QR code stores your message as <b>codewords</b> (8 modules each), split into <b>Reed-Solomon blocks</b>. Each block can repair a limited number of damaged codewords: roughly half its error-correction codewords. If you paint over a module and it ends up a different colour than the encoder wanted, that whole codeword counts as damaged. Painting a module the colour it already was costs nothing.</p>
+      <ul>
+        <li><b>Required</b> modules (blue tint) are finder, timing, alignment, format and version patterns. Scanners need them, so they're locked by default.</li>
+        <li><b>Painted</b> modules (purple) are your drawing. The ones marked with a red dot differ from the natural code and use up budget.</li>
+        <li><b>Damaged codewords</b> are shaded red. The status panel shows how many each block has against its limit. The code fails when <i>any</i> single block runs out.</li>
+        <li><b>Use spare capacity</b>: when your message is shorter than the version holds, the leftover padding codewords can be anything. QR Doodle solves for padding values that make your drawing "naturally" correct. Larger versions give you more room for a logo.</li>
+        <li><b>Mask → Best for my drawing</b> tries all 8 masks and picks the one that costs the least budget.</li>
+        <li><b>Compare densities</b> tries the same logo across versions and error-correction levels so you can pick a winner.</li>
+        <li><b>Test with real decoders</b> runs the exported image through jsQR (bundled) and, where the browser supports it, the native BarcodeDetector.</li>
+      </ul>
+      <h3>Tools &amp; shortcuts</h3>
+      <p><kbd>S</kbd> select (drag inside to move; <kbd>Ctrl/⌘+C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> copy, cut, paste; <kbd>Delete</kbd> clears; while pasting <kbd>R</kbd> rotates, <kbd>H</kbd>/<kbd>V</kbd> flip, Shift+click stamps repeatedly) · <kbd>B</kbd> brush · <kbd>R</kbd> rectangle · <kbd>O</kbd> ellipse · <kbd>M</kbd> move logo · <kbd>F</kbd> design focus · <kbd>D</kbd>/<kbd>L</kbd>/<kbd>E</kbd> dark/light/erase · <kbd>[</kbd>/<kbd>]</kbd> brush size · right-click erases · <kbd>Ctrl/⌘+Z</kbd> undo · <kbd>Ctrl/⌘+Shift+Z</kbd> redo. Hover a module to see its codeword.</p>
+      <p class="hint">Tip: keep the worst block under ~60% for printed codes, test with several phone cameras, and leave the quiet zone (white border) intact.</p>
+      <div class="row"><span class="hint">QR Doodle <span data-app-version></span></span><button value="close">Got it</button></div>
+    </form>
+  </dialog>
+
+  <script src="version.js"></script>
+  <script src="qrcore.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

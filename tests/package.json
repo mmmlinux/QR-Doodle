@@ -1,0 +1,14 @@
+{
+  "name": "qr-doodle-tests",
+  "private": true,
+  "description": "Checks for QR Doodle. Not needed to run the app.",
+  "scripts": {
+    "test:core": "node core.test.js",
+    "test:export": "node export-diff.test.js"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "puppeteer-core": "^24.0.0",
+    "qrcode": "^1.5.0"
+  }
+}
